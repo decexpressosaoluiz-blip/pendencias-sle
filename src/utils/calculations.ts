@@ -1,6 +1,6 @@
 import { CTE, PendencyStatus, AppConfig } from '../types';
 
-export const parseDate = (dateStr: string): Date | null => {
+export const parseDate = (dateStr: string | null | undefined): Date | null => {
     if (!dateStr) return null;
 
     // 1. Try ISO Format (YYYY-MM-DD or YYYY-MM-DDTHH:mm:ss)
@@ -28,7 +28,8 @@ export const calculateStatus = (cte: CTE, config: AppConfig): PendencyStatus => 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    const limitDate = parseDate(cte.limitDate);
+    // Fallback seguro para string vazia se limitDate for undefined
+    const limitDate = parseDate(cte.limitDate || "");
     
     // If no date, assume ON_TIME to avoid scaring users, or create a 'NO DATE' status if preferred
     if (!limitDate) return PendencyStatus.ON_TIME;
@@ -55,8 +56,10 @@ export const calculateStatus = (cte: CTE, config: AppConfig): PendencyStatus => 
     return PendencyStatus.ON_TIME;
 };
 
-export const getStatusColor = (status: PendencyStatus): string => {
-    switch (status) {
+export const getStatusColor = (status: string | undefined): string => {
+    // Fallback para evitar erro se status for undefined
+    const safeStatus = status || "";
+    switch (safeStatus) {
         case PendencyStatus.CRITICAL:
             return 'bg-red-600 text-white border-red-700';
         case PendencyStatus.LATE:
@@ -72,6 +75,8 @@ export const getStatusColor = (status: PendencyStatus): string => {
     }
 };
 
-export const formatCurrency = (value: number): string => {
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+export const formatCurrency = (value: number | undefined | null): string => {
+    // Garante que value seja um número, fallback para 0
+    const val = value || 0;
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 };

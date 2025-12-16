@@ -1,10 +1,9 @@
-import React, { useEffect, useState, useContext, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { User, CTE, PendencyStatus, PaymentType } from '../types';
 import { fetchAllData, normalizeText } from '../services/api';
 import { calculateStatus, getStatusColor, formatCurrency, parseDate } from '../utils/calculations';
-import { AppContext } from '../App';
-import { Search, MessageSquare, Filter, X, ArrowDownToLine, ArrowUpFromLine, CheckCircle, Download, Building2, Globe, AlertCircle, Layers } from 'lucide-react';
+import { Search, MessageSquare, Filter, X, ArrowDownToLine, ArrowUpFromLine, CheckCircle, Download, Building2, AlertCircle, Layers } from 'lucide-react';
 import NoteModal from '../components/NoteModal';
 import * as XLSX from 'xlsx';
 
@@ -88,7 +87,7 @@ const PendingList: React.FC<PendingListProps> = ({ user, filterType, data: paren
 
     // Lista de Unidades para Admin
     const uniqueDestUnits = useMemo(() => {
-        const units = new Set(sourceCtes.map(c => c.deliveryUnit));
+        const units = new Set(sourceCtes.map(c => c.deliveryUnit || ""));
         return Array.from(units).filter(Boolean).sort();
     }, [sourceCtes]);
 
@@ -111,8 +110,13 @@ const PendingList: React.FC<PendingListProps> = ({ user, filterType, data: paren
         } else {
             if (isUnitUser) {
                 list = list.filter(c => {
-                    const matchesDest = normalizeText(c.deliveryUnit) === normalizeText(user.linkedDestUnit!);
-                    const matchesOrigin = normalizeText(c.collectionUnit) === normalizeText(user.linkedOriginUnit!);
+                    const cDest = c.deliveryUnit || "";
+                    const cOrigin = c.collectionUnit || "";
+                    const uDest = user.linkedDestUnit || "";
+                    const uOrigin = user.linkedOriginUnit || "";
+
+                    const matchesDest = normalizeText(cDest) === normalizeText(uDest);
+                    const matchesOrigin = normalizeText(cOrigin) === normalizeText(uOrigin);
 
                     if (viewMode === 'INCOMING') return matchesDest;
                     if (viewMode === 'OUTGOING') return matchesOrigin;
@@ -120,7 +124,7 @@ const PendingList: React.FC<PendingListProps> = ({ user, filterType, data: paren
                 });
             } else {
                 if (selectedUnitFilter) {
-                    list = list.filter(c => normalizeText(c.deliveryUnit) === normalizeText(selectedUnitFilter));
+                    list = list.filter(c => normalizeText(c.deliveryUnit || "") === normalizeText(selectedUnitFilter));
                 }
             }
         }
@@ -135,7 +139,7 @@ const PendingList: React.FC<PendingListProps> = ({ user, filterType, data: paren
         if (searchTerm) {
             const lower = searchTerm.toLowerCase();
             list = list.filter(c => 
-                (c.cteNumber || '').includes(lower) || 
+                (c.cteNumber || '').toLowerCase().includes(lower) || 
                 (c.recipient || '').toLowerCase().includes(lower) ||
                 (c.collectionUnit || '').toLowerCase().includes(lower) ||
                 (c.deliveryUnit || '').toLowerCase().includes(lower)
@@ -144,8 +148,8 @@ const PendingList: React.FC<PendingListProps> = ({ user, filterType, data: paren
 
         // Ordenação
         list.sort((a, b) => {
-            const dateA = parseDate(a.limitDate)?.getTime() || 0;
-            const dateB = parseDate(b.limitDate)?.getTime() || 0;
+            const dateA = parseDate(a.limitDate || "")?.getTime() || 0;
+            const dateB = parseDate(b.limitDate || "")?.getTime() || 0;
             return dateA - dateB; 
         });
 
@@ -167,7 +171,7 @@ const PendingList: React.FC<PendingListProps> = ({ user, filterType, data: paren
         setActiveFilter(prev => ({ ...prev, paymentType: prev?.paymentType === type ? undefined : type }));
     };
 
-    const formatDisplayDate = (dateStr: string) => {
+    const formatDisplayDate = (dateStr: string | undefined | null) => {
         if (!dateStr) return '';
         try {
             const date = new Date(dateStr);
@@ -180,15 +184,15 @@ const PendingList: React.FC<PendingListProps> = ({ user, filterType, data: paren
 
     const handleExport = () => {
         const dataToExport = processedList.map(c => ({
-            "CTE": c.cteNumber,
-            "Série": c.serie,
-            "Status": c.status,
-            "Destinatário": c.recipient,
-            "Origem": c.collectionUnit,
-            "Destino": c.deliveryUnit,
-            "Data Limite": formatDisplayDate(c.limitDate),
-            "Valor": c.value,
-            "Tipo Pagamento": c.type,
+            "CTE": c.cteNumber || "",
+            "Série": c.serie || "",
+            "Status": c.status || "",
+            "Destinatário": c.recipient || "",
+            "Origem": c.collectionUnit || "",
+            "Destino": c.deliveryUnit || "",
+            "Data Limite": formatDisplayDate(c.limitDate || ""),
+            "Valor": c.value || 0,
+            "Tipo Pagamento": c.type || "",
             "Última Justificativa": c.justification || ''
         }));
 
@@ -327,7 +331,7 @@ const PendingList: React.FC<PendingListProps> = ({ user, filterType, data: paren
                                     <tr key={cte.id} className="hover:bg-gray-50 transition-colors group">
                                         <td className="px-6 py-4">
                                             <span className={`inline-block px-2 py-1 rounded text-xs font-bold whitespace-nowrap ${getStatusColor(cte.status as PendencyStatus)}`}>{cte.status}</span>
-                                            <div className="mt-1"><span className="text-[10px] text-gray-400 uppercase font-bold">{cte.type?.replace('FATURAR_', '')}</span></div>
+                                            <div className="mt-1"><span className="text-[10px] text-gray-400 uppercase font-bold">{(cte.type || 'OUTROS').replace('FATURAR_', '')}</span></div>
                                         </td>
                                         <td className="px-6 py-4 font-medium text-gray-900 whitespace-nowrap">
                                             {cte.cteNumber} 
@@ -337,8 +341,8 @@ const PendingList: React.FC<PendingListProps> = ({ user, filterType, data: paren
                                         <td className="px-6 py-4 text-gray-600 max-w-xs truncate" title={cte.recipient}>{cte.recipient}</td>
                                         <td className="px-6 py-4 text-gray-600">
                                             <div className="flex flex-col text-xs">
-                                                <span className="whitespace-nowrap text-gray-400">DE: <span className="text-gray-600">{cte.collectionUnit}</span></span>
-                                                <span className="whitespace-nowrap text-gray-400">PARA: <span className="font-bold text-gray-800">{cte.deliveryUnit}</span></span>
+                                                <span className="whitespace-nowrap text-gray-400">DE: <span className="text-gray-600">{cte.collectionUnit || 'N/A'}</span></span>
+                                                <span className="whitespace-nowrap text-gray-400">PARA: <span className="font-bold text-gray-800">{cte.deliveryUnit || 'N/A'}</span></span>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-gray-600 whitespace-nowrap font-medium">{formatDisplayDate(cte.limitDate)}</td>
