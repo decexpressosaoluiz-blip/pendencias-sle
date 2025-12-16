@@ -1,7 +1,7 @@
 {
-  "name": "sle-dashboard-operacional",
+  "name": "sle-logistica-painel-v1",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
