@@ -1,0 +1,19 @@
+/* src/index.css */
+/* Garanta que este arquivo tenha as diretivas do Tailwind */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply font-sans text-slate-900;
+}
+
+/* Animações utilitárias */
+.animate-in {
+  animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}

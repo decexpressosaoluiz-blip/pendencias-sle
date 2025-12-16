@@ -21,7 +21,11 @@ interface AppContextType {
 export const AppContext = createContext<AppContextType>({ config: null, triggerGlobalAlert: () => {} });
 
 // --- Protected Route ---
-const ProtectedRoute = ({ children, user }: { children: React.ReactNode; user: User | null }) => {
+interface ProtectedRouteProps {
+    children?: React.ReactNode;
+    user: User | null;
+}
+const ProtectedRoute = ({ children, user }: ProtectedRouteProps) => {
     if (!user) return <Navigate to="/login" replace />;
     return <>{children}</>;
 };
@@ -42,11 +46,17 @@ const TopHeader = ({ title, counts, onNotificationClick, isPanelOpen }: any) => 
     );
 };
 
-// Componente de Notificação Atualizado
+// Componente de Notificação
 const NotificationPanel = ({ isOpen, onClose, notifications = [], onMarkRead, onMarkAllRead, onItemClick, readIds = [] }: any) => {
     if (!isOpen) return null;
     
-    const list = Array.isArray(notifications) ? notifications : [];
+    // Converte para array seguro e ordena: não lidos primeiro
+    const list = (Array.isArray(notifications) ? notifications : []).sort((a: any, b: any) => {
+        const isReadA = readIds.includes(a.id);
+        const isReadB = readIds.includes(b.id);
+        if (isReadA === isReadB) return 0;
+        return isReadA ? 1 : -1;
+    });
 
     return (
         <>
@@ -79,7 +89,7 @@ const NotificationPanel = ({ isOpen, onClose, notifications = [], onMarkRead, on
                                     key={n.id} 
                                     className={`p-3 rounded-lg flex gap-3 cursor-pointer transition-all ${
                                         isRead 
-                                            ? 'bg-gray-50 border border-transparent opacity-75 hover:bg-gray-100 hover:opacity-100' 
+                                            ? 'bg-gray-50 border border-transparent opacity-75 hover:bg-gray-100' 
                                             : 'bg-white border-l-4 border-l-blue-500 shadow-sm border-t border-r border-b border-gray-100 hover:shadow-md'
                                     }`}
                                     onClick={() => onItemClick(n)}
@@ -119,7 +129,15 @@ const NotificationPanel = ({ isOpen, onClose, notifications = [], onMarkRead, on
     );
 };
 
-const Layout = ({ children, user, onLogout, counts, notificationState }: any) => {
+interface LayoutProps {
+    children?: React.ReactNode;
+    user: any;
+    onLogout: () => void;
+    counts: any;
+    notificationState: any;
+}
+
+const Layout = ({ children, user, onLogout, counts, notificationState }: LayoutProps) => {
     const location = useLocation();
     let title = "Dashboard";
     if (location.pathname.includes('pendencias')) title = "Pendências";
@@ -164,7 +182,12 @@ const App: React.FC = () => {
     const [selectedNotificationCte, setSelectedNotificationCte] = useState<CTE | null>(null);
     const [isGlobalModalOpen, setIsGlobalModalOpen] = useState(false);
 
-    const audioRef = useRef(new Audio('data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU'));
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+
+    useEffect(() => {
+        // Inicializa o áudio apenas no client-side para evitar erros de SSR/Build
+        audioRef.current = new Audio('data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU');
+    }, []);
 
     const triggerGlobalAlert = () => setAlertActive(true);
 
@@ -191,7 +214,6 @@ const App: React.FC = () => {
                     const hasDestChanged = freshUser.linkedDestUnit !== user.linkedDestUnit;
                     
                     if (hasRoleChanged || hasOriginChanged || hasDestChanged) {
-                        // SEGURANÇA CRÍTICA: Proteção contra apagamento acidental de unidades
                         const isProtectedRole = user.role === 'UNIDADE' || user.role === 'unidade';
                         const isBecomingOrphan = !freshUser.linkedOriginUnit && !freshUser.linkedDestUnit;
                         
@@ -248,7 +270,11 @@ const App: React.FC = () => {
 
     useEffect(() => {
         if (alertActive) {
-            const playSound = () => audioRef.current.play().catch(() => {});
+            const playSound = () => {
+                if (audioRef.current) {
+                    audioRef.current.play().catch(() => {});
+                }
+            };
             playSound();
             const interval = setInterval(playSound, 3000);
             return () => clearInterval(interval);
@@ -264,15 +290,9 @@ const App: React.FC = () => {
         isOpen: isNotificationPanelOpen,
         togglePanel: () => setIsNotificationPanelOpen(!isNotificationPanelOpen),
         onClose: () => setIsNotificationPanelOpen(false),
-        // CORREÇÃO: Passa TODOS os itens para manter histórico, mas ordena os não lidos primeiro
-        notifications: rawNotificationItems.sort((a, b) => {
-            const isReadA = readNotificationIds.includes(a.id);
-            const isReadB = readNotificationIds.includes(b.id);
-            if (isReadA === isReadB) return 0;
-            return isReadA ? 1 : -1;
-        }),
+        notifications: rawNotificationItems,
         readIds: readNotificationIds,
-        // Mantém a contagem de badge apenas para não lidos
+        // O contador da bolinha vermelha conta APENAS as não lidas
         counts: { 
             search: (rawNotificationItems || []).filter(n => n.isSearch && !(readNotificationIds || []).includes(n.id)).length, 
             critical: (rawNotificationItems || []).filter(n => !n.isSearch && !(readNotificationIds || []).includes(n.id)).length 
@@ -282,24 +302,20 @@ const App: React.FC = () => {
             setReadNotificationIds(newIds);
             localStorage.setItem(`sle_read_notifications_${user?.username}`, JSON.stringify(newIds));
         },
-        // CORREÇÃO: Garante que todos os IDs atuais sejam marcados
         onMarkAllRead: () => {
             const currentIds = rawNotificationItems.map(n => n.id);
             const allReadIds = Array.from(new Set([...readNotificationIds, ...currentIds]));
             setReadNotificationIds(allReadIds);
             localStorage.setItem(`sle_read_notifications_${user?.username}`, JSON.stringify(allReadIds));
         },
-        // CORREÇÃO: Ação ao clicar no item da notificação
         onItemClick: (cte: CTE) => {
-            // Marca como lida
+            // Marca como lida ao clicar
             const newIds = [...readNotificationIds, cte.id];
             setReadNotificationIds(newIds);
             localStorage.setItem(`sle_read_notifications_${user?.username}`, JSON.stringify(newIds));
             
-            // Fecha painel
+            // Fecha painel e abre modal
             setIsNotificationPanelOpen(false);
-            
-            // Abre Modal Global
             setSelectedNotificationCte(cte);
             setIsGlobalModalOpen(true);
         }
@@ -314,9 +330,7 @@ const App: React.FC = () => {
                     onClose={() => setIsGlobalModalOpen(false)} 
                     cte={selectedNotificationCte} 
                     currentUser={user?.username || ''}
-                    onNoteAdded={async () => {
-                        // Refresh silencioso se necessário
-                    }}
+                    onNoteAdded={async () => {}}
                 />
 
                 {alertActive && (

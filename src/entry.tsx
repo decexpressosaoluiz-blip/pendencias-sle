@@ -1,0 +1,1 @@
+// DELETED: Entry point moved to ../root.tsx

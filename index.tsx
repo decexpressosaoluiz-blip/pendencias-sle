@@ -1,10 +1,4 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './src/App';
-import './src/index.css';
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+// ESTE ARQUIVO FOI DESCONTINUADO.
+// O ponto de entrada da aplicação é src/main.tsx.
+// Este arquivo é mantido apenas porque não pode ser excluído no ambiente atual.
+// Ele é ignorado pelo tsconfig.json.

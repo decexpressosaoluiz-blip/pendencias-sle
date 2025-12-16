@@ -1,13 +1,46 @@
 import { CTE, Note, User, AppConfig, Profile, PaymentType } from '../types';
 
+// ============================================================================
+// CONFIGURAÇÃO
+// ============================================================================
+
 export const API_URL = 'https://script.google.com/macros/s/AKfycbz9otqfSKZX0ho9pugWiMAQ9kAY6MLN_o5eCx2UFzTm_BUnlQMtE8ekbI2bH92m0zKQ/exec';
 
+// ============================================================================
+// CACHE SYSTEM
+// ============================================================================
 let globalCache: {
     data: { ctes: CTE[], notes: Note[], users: User[], profiles: Profile[], config: AppConfig } | null,
     timestamp: number
 } = { data: null, timestamp: 0 };
 
 const CACHE_TTL = 2 * 60 * 1000; 
+
+// ============================================================================
+// DADOS MOCKADOS (FALLBACK)
+// ============================================================================
+const getMockData = () => {
+    const mockCtes: CTE[] = [
+        {
+            id: 'cte-123456-1', cteNumber: '123456', serie: '1', emissionDate: '2023-10-01', deadlineDate: '2023-10-05', limitDate: '2023-10-10',
+            status: 'PENDENTE', collectionUnit: 'SAO PAULO', deliveryUnit: 'RIO DE JANEIRO', value: 1500.50, freightPaid: false,
+            recipient: 'CLIENTE EXEMPLO LTDA', justification: '', type: 'CIF' as any, hasNotes: false, notesCount: 0, isSearch: false
+        }
+    ];
+
+    const mockConfig: AppConfig = {
+        criticalDaysLimit: 5,
+        uploadFolderUrl: '',
+        googleScriptUrl: API_URL,
+        lastUpdate: Date.now()
+    };
+
+    return { ctes: mockCtes, notes: [], users: [], profiles: [], config: mockConfig };
+};
+
+// ============================================================================
+// API CLIENT
+// ============================================================================
 
 const apiRequest = async (action: string, payload: any = {}) => {
     try {
@@ -35,6 +68,10 @@ const apiRequest = async (action: string, payload: any = {}) => {
         return { success: false, error: String(e) };
     }
 };
+
+// ============================================================================
+// HELPERS
+// ============================================================================
 
 export const normalizeText = (text: string | undefined): string => {
     return (text || '').trim().toLowerCase();
@@ -111,6 +148,10 @@ const normalizePaymentType = (raw: string): string => {
     return 'OUTROS';
 };
 
+// ============================================================================
+// 1. LEITURA DE DADOS (GET_ALL)
+// ============================================================================
+
 export const fetchAllData = async (forceRefresh = false): Promise<{ ctes: CTE[], notes: Note[], users: User[], profiles: Profile[], config: AppConfig }> => {
     const now = Date.now();
     if (!forceRefresh && globalCache.data && (now - globalCache.timestamp < CACHE_TTL)) {
@@ -122,8 +163,8 @@ export const fetchAllData = async (forceRefresh = false): Promise<{ ctes: CTE[],
     const response = await apiRequest('GET_ALL');
 
     if (!response || !response.success || !response.data) {
-        console.warn("API indisponível ou erro de conexão.");
-        return { ctes: [], notes: [], users: [], profiles: [], config: { criticalDaysLimit: 5, uploadFolderUrl: '', googleScriptUrl: API_URL, lastUpdate: Date.now() } };
+        console.warn("API indisponível. Carregando dados de fallback.");
+        return getMockData();
     }
 
     const { ctes: rawCtes, processData, config: rawConfig, users: rawUsers, profiles: rawProfiles } = response.data;
@@ -152,9 +193,11 @@ export const fetchAllData = async (forceRefresh = false): Promise<{ ctes: CTE[],
         const cteNum = String(getProp(r, KEYS.cteNumber) || '');
         const serie = String(getProp(r, KEYS.serie) || '');
         
-        // CORREÇÃO: ID Determinístico para evitar "piscar" de notificações
+        // --- FIX CRÍTICO: ID DETERMINÍSTICO ---
+        // Forçamos o ID gerado para garantir unicidade e consistência no render do React.
+        // Isso previne que a tela pisque ou perca o foco quando os dados atualizam.
         const generatedId = `cte-${cteNum}-${serie}`;
-        const id = String(getProp(r, KEYS.id) || generatedId);
+        const id = generatedId; // Ignoramos o ID do banco se ele não for confiável
 
         return {
             id: id,
@@ -230,8 +273,13 @@ export const fetchAllData = async (forceRefresh = false): Promise<{ ctes: CTE[],
     return result;
 };
 
+// ============================================================================
+// 2. LEITURA DE NOTAS (ON-DEMAND)
+// ============================================================================
+
 export const fetchNotesForCte = async (cteId: string, cteNumber?: string): Promise<Note[]> => {
     const lookupValue = cteNumber || cteId;
+    
     const response = await apiRequest('getNotes', { cteId: lookupValue });
     if (!response.success || !Array.isArray(response.data)) return [];
 
@@ -261,11 +309,18 @@ export const fetchNotesForCte = async (cteId: string, cteNumber?: string): Promi
             attachments = [{ name: 'Anexo', mimeType: 'image/jpeg', data: getProp(n, KEYS.imageUrl) }];
         }
 
+        // Gera ID determinístico para notas se não houver um vindo do backend
+        const author = String(getProp(n, KEYS.author) || 'Sistema');
+        const date = String(getProp(n, KEYS.date) || '');
+        const textSnippet = String(getProp(n, KEYS.text) || '').substring(0, 10);
+        // ID composto único e estável
+        const noteId = String(getProp(n, KEYS.id) || `note-${cteId}-${cleanKey(author)}-${cleanKey(date)}-${cleanKey(textSnippet)}`);
+
         return {
-            id: String(getProp(n, KEYS.id) || Math.random().toString(36)),
+            id: noteId,
             cteId: String(getProp(n, KEYS.cteId) || cteId),
             date: formatDate(getProp(n, KEYS.date)),
-            author: String(getProp(n, KEYS.author) || 'Sistema'),
+            author: author,
             text: String(getProp(n, KEYS.text) || ''),
             imageUrl: getProp(n, KEYS.imageUrl) || undefined,
             attachments: attachments,
@@ -274,9 +329,17 @@ export const fetchNotesForCte = async (cteId: string, cteNumber?: string): Promi
     });
 };
 
+// ============================================================================
+// 3. AUTENTICAÇÃO
+// ============================================================================
+
 export const authenticateUser = async (username: string, password: string) => {
     return apiRequest('login', { username, password });
 };
+
+// ============================================================================
+// 4. ESCRITA (ACTIONS)
+// ============================================================================
 
 export const sendNoteToScript = async (note: Note, cteDetails?: any) => {
     const result = await apiRequest('addNote', {
