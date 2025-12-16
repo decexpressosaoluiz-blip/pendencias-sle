@@ -1,0 +1,8 @@
+{
+  "name": "São Luiz Express - Pendency Control",
+  "description": "A comprehensive system for managing logistics pendencies, critical alerts, and business intelligence using Google Sheets as a backend.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
